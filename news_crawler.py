@@ -133,7 +133,7 @@ def main():
     message = generate_feishu_message(categorized)
     
     # 推送到飞书
-    webhook = os.getenv("FEISHU_WEBHOOK")
+    webhook = os.getenv("https://open.feishu.cn/open-apis/bot/v2/hook/821f4e1a-59bd-4a2b-b6e5-8f35fc92c54a")
     if not webhook:
         raise ValueError("FEISHU_WEBHOOK 环境变量未设置")
     
