@@ -17,31 +17,44 @@ MAX_ITEMS_PER_CATEGORY = 3  # 每个领域最多抓3条
 # ==========================
 
 def get_36kr_news():
-    """从36氪API获取行业新闻（官方接口，无反爬风险）"""
-    url = "https://gateway.36kr.com/api/mis/home/nav-column/flash"
+    """使用稳定公开API获取36氪热榜（经测试可用）"""
+    url = "https://v2.xxapi.cn/api/hot36kr"  # 替换为有效接口
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Referer": "https://36kr.com/"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.36kr.com/"
     }
+    
     try:
-        response = requests.post(url, json={
-            "uri": "/api/mis/home/nav-column/flash",
-            "business_id": "",
-            "platform": "WEB",
-            "timestamp": int(time.time()*1000),
-            "param": {"pageSize": 30, "columnOnIds": [33, 35, 36]}  # 33=汽车,35=智能驾驶,36=新能源
-        }, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()  # 检查HTTP错误状态码
+        
+        # 关键修复：严格校验响应内容
+        if not response.text.strip():
+            print("❌ 36氪API返回空数据")
+            return []
+        
+        data = response.json()
+        
+        # 关键修复：验证JSON结构
+        if not isinstance(data, list) or len(data) == 0:
+            print(f"❌ 36氪API返回异常结构: {type(data)}")
+            return []
         
         news_list = []
-        for item in response.json()["data"]["itemList"]:
-            title = item["templateMaterial"]["widgetContent"]["title"]
-            summary = item["templateMaterial"]["widgetContent"]["summary"]
-            url = f"https://36kr.com/p/{item['id']}"
-            news_list.append({"title": title, "summary": summary, "url": url})
+        for item in data[:20]:  # 仅取前20条
+            title = item.get("title", "")
+            url = item.get("url", "")
+            if title and url:  # 确保关键字段存在
+                news_list.append({"title": title, "summary": "", "url": url})
         return news_list
+    
+    except requests.exceptions.RequestException as e:
+        print(f"❌ 网络请求失败: {str(e)}")
+    except json.JSONDecodeError:
+        print(f"❌ JSON解析失败 | 响应内容: {response.text[:200]}")  # 打印前200字符辅助调试
     except Exception as e:
-        print(f"36氪抓取失败: {str(e)}")
-        return []
+        print(f"❌ 未知错误: {str(e)}")
+    return []
 
 def get_the_paper_news():
     """从澎湃新闻RSS获取新闻（官方RSS源）"""
