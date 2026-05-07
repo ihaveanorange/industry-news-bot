@@ -29,7 +29,7 @@ CATEGORIES = {
     "标准法规": ["标准", "法规", "准入", "认证", "测试", "检测", "公告", "工信部", "交通部", "国标", "行标", 
                  "团标", "强标", "安全标准", "排放标准", "油耗标准", "新能源补贴", "购置税", "双积分"]
 }
-MAX_ITEMS_PER_CATEGORY = 3
+MAX_ITEMS_PER_CATEGORY = 6
 # ==========================
 
 def get_36kr_news():
@@ -62,7 +62,7 @@ def get_36kr_news():
             
             news_list = []
             # 在 get_36kr_news() 函数中，解析 item 的部分
-            for item in items[:30]:
+            for item in items[:100]:
                 title = ""
                 item_id = None
                 
@@ -121,7 +121,7 @@ def get_the_paper_news():
                 continue
             
             news_list = []
-            for entry in feed.entries[:30]:
+            for entry in feed.entries[:100]:
                 title = entry.title
                 summary = re.sub('<[^<]+?>', '', entry.summary) if hasattr(entry, 'summary') else ""
                 news_list.append({"title": title, "summary": summary, "url": entry.link})
