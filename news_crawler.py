@@ -1,6 +1,7 @@
 import requests
 import feedparser
 from datetime import datetime
+from datetime import timedelta
 import re
 import os
 import json
@@ -12,9 +13,9 @@ CATEGORIES = {
                      "江淮", "江铃", "庆铃", "五十铃"],
     
     "乘用车": ["乘用车", "轿车", "SUV", "MPV", "新能源车", "电动车", "纯电车", "插混", "增程", 
-                     "比亚迪", "特斯拉", "蔚来", "小鹏", "理想", "小米汽车", "华为", "问界", "极氪", 
+                     "比亚迪", "特斯拉", "蔚来", "小鹏", "理想汽车", "小米汽车", "华为", "问界", "极氪", 
                      "长安", "吉利", "长城", "上汽", "广汽", "一汽", "北汽", "奇瑞", "东风", 
-                     "大众", "丰田", "本田", "宝马", "奔驰", "奥迪", "小米", "华为", "鸿蒙"],
+                     "大众", "丰田", "本田", "宝马", "奔驰", "奥迪", "小米", "华为", "车机"],
 
     "氢能产业": ["氢气", "氢能", "燃料电池", "氢燃料", "加氢", "制氢", "加氢站", "储氢", "质子交换膜", 
                   "绿氢", "灰氢", "氢"],
@@ -26,7 +27,7 @@ CATEGORIES = {
     "智能网联": ["智能网联", "V2X", "车联网", "车路协同", "5G车联", "C-V2X", "OBU", "RSU", "路侧", "云控", 
                  "OTA", "智能座舱", "车机", "HUD", "AR-HUD", "语音交互", "手势控制"],
     
-    "标准法规": ["标准", "法规", "准入", "认证", "测试", "检测", "公告", "工信部", "交通部", "国标", "行标", 
+    "标准法规": ["准入", "认证", "公告", "工信部", "交通部", "国标", "行标", 
                  "团标", "强标", "安全标准", "排放标准", "油耗标准", "新能源补贴", "购置税", "双积分"]
 }
 MAX_ITEMS_PER_CATEGORY = 6
@@ -221,8 +222,12 @@ def generate_feishu_message(categorized_news):
     }
 
 def main():
+    # 获取当前时间并修正为北京时间
+    utc_now = datetime.now()
+    beijing_now = utc_now + timedelta(hours=8) # 只需要这一行核心计算
+    
     print("🚀 开始获取行业新闻...")
-    print(f"📅 当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📅 当前时间：{beijing_now.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # 从36氪和澎湃新闻获取新闻
     news_list = []
@@ -235,7 +240,7 @@ def main():
     if not news_list:
         print("⚠️ 所有新闻源均失败，将发送提示消息")
         categorized = {category: [] for category in CATEGORIES}
-        message = generate_feishu_message(categorized)
+        message = generate_feishu_message(categorized, beijing_now)
     else:
         # 分类过滤
         categorized = filter_by_category(news_list)
