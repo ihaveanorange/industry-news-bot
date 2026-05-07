@@ -56,16 +56,35 @@ def get_36kr_news():
                         break
             
             news_list = []
+            # 在 get_36kr_news() 函数中，解析 item 的部分
             for item in items[:30]:
                 title = ""
+                item_id = None
+                
                 if isinstance(item, dict):
+                    # 提取标题（不变）
                     if "templateMaterial" in item and isinstance(item["templateMaterial"], dict):
                         title = item["templateMaterial"].get("widgetTitle", "")
                     if not title:
                         title = (item.get("title") or item.get("subject") or item.get("name") or "")
+                    
+                    # 修复：从 templateMaterial 中提取 itemId
+                    if "templateMaterial" in item and isinstance(item["templateMaterial"], dict):
+                        item_id = item["templateMaterial"].get("itemId")
+                    # 如果上面没取到，尝试从根层级获取
+                    if not item_id:
+                        item_id = item.get("itemId")
                 
-                url = (item.get("url") or item.get("link") or item.get("href") or "")
-                if title:
+                # 修复：根据 itemId 拼接标准 URL
+                url = ""
+                if item_id:
+                    url = f"https://www.36kr.com/p/{item_id}"
+                else:
+                    # 备用方案：如果API直接提供了url字段
+                    url = (item.get("url") or item.get("link") or "")
+                
+                # 修复：确保有 URL 才加入列表
+                if title and url:
                     news_list.append({"title": title, "summary": "", "url": url})
             
             print(f"  ✅ 成功解析 {len(news_list)} 条36氪新闻")
