@@ -1,8 +1,6 @@
 import requests
 import feedparser
 from datetime import datetime
-import time
-import random
 import re
 import os
 import json
@@ -17,10 +15,10 @@ MAX_ITEMS_PER_CATEGORY = 3  # 每个领域最多抓3条
 # ==========================
 
 def get_36kr_news():
-    """使用多个备用API获取36氪新闻"""
+    """从36氪获取新闻（修复了widgetTitle字段问题）"""
     print("📡 正在从36氪获取新闻...")
     
-    # 备用API列表（按可靠性排序）
+    # 备用API列表
     apis = [
         "https://v2.xxapi.cn/api/hot36kr",
         "https://api.vvhan.com/api/hotlist/36Ke",
@@ -46,46 +44,37 @@ def get_36kr_news():
             data = response.json()
             print(f"  📊 返回数据类型: {type(data)}")
             
-            # 尝试多种可能的返回格式
             items = []
-            
-            # 格式1: {"data": [...]}
+            # 处理标准字典结构
             if isinstance(data, dict):
-                # 尝试所有可能的键名
-                for key in ["data", "list", "items", "result", "news", "hot", "dataList"]:
+                for key in ["data", "list", "items", "result"]:
                     if key in data and isinstance(data[key], list):
                         items = data[key]
                         print(f"  ✅ 从键 '{key}' 找到列表，长度: {len(items)}")
                         break
-                
-                # 如果还没找到，尝试直接取第一个列表值
-                if not items:
-                    for key, value in data.items():
-                        if isinstance(value, list):
-                            items = value
-                            print(f"  ✅ 从键 '{key}' 找到列表（备用），长度: {len(items)}")
-                            break
             
-            # 格式2: 直接是列表
-            elif isinstance(data, list):
-                items = data
-                print(f"  ✅ 直接是列表，长度: {len(items)}")
-            
-            if not items:
-                print(f"  ❌ 无法从响应中提取列表")
-                continue
-            
+            # 核心修复点：提取widgetTitle
             news_list = []
             for item in items[:30]:
-                # 尝试多种可能的字段名
-                title = (item.get("title") or item.get("subject") or 
-                        item.get("name") or item.get("content") or 
-                        item.get("Title") or item.get("text") or "")
+                # 优先检查是否有 templateMaterial.widgetTitle (根据你提供的网页源码)
+                title = ""
+                if isinstance(item, dict):
+                    # 尝试新结构
+                    if "templateMaterial" in item and isinstance(item["templateMaterial"], dict):
+                        title = item["templateMaterial"].get("widgetTitle", "")
+                    # 尝试旧结构作为备用
+                    if not title:
+                        title = (item.get("title") or item.get("subject") or item.get("name") or "")
+                
                 url = (item.get("url") or item.get("link") or 
                       item.get("href") or item.get("Url") or "")
                 
                 if title:
                     news_list.append({"title": title, "summary": "", "url": url})
+            
+            # 打印前几条标题用于调试（确认是否抓到了文字）
+            if news_list:
+                print(f"  🟢 抓取到的前5条标题示例: {[n['title'][:20] for n in news_list[:5]]}")
             
             print(f"  ✅ 成功解析 {len(news_list)} 条新闻")
             return news_list
@@ -98,13 +87,13 @@ def get_36kr_news():
     return []
 
 def get_the_paper_news():
-    """从澎湃新闻获取新闻（使用多个备用源）"""
+    """从澎湃新闻获取新闻（优化了RSS解析）"""
     print("📡 正在从澎湃新闻获取新闻...")
     
     # 备用RSS源
     rss_sources = [
-        "https://m.thepaper.cn/rss/news.xml",
-        "https://feedx.net/rss/thepaper.xml",
+        "https://m.thepaper.cn/rss/news.xml", # 官方源
+        "https://feedx.net/rss/thepaper.xml", # 备用源
         "https://rsshub.app/thepaper/latest"
     ]
     
@@ -121,9 +110,13 @@ def get_the_paper_news():
             for entry in feed.entries[:30]:
                 title = entry.title
                 summary = re.sub('<[^<]+?>', '', entry.summary) if hasattr(entry, 'summary') else ""
-                news_list.append({"title": title, "summary": summary, "url": entry.link})
+                link = entry.link
+                news_list.append({"title": title, "summary": summary, "url": link})
             
             print(f"  ✅ 成功获取 {len(news_list)} 条新闻")
+            # 打印标题用于确认内容
+            if news_list:
+                print(f"  🟢 澎湃抓取示例: {news_list[0]['title']}")
             return news_list
             
         except Exception as e:
@@ -133,44 +126,28 @@ def get_the_paper_news():
     print("❌ 所有澎湃新闻源均失败")
     return []
 
-def get_baidu_news():
-    """从百度热搜获取科技新闻（备用源）"""
-    print("📡 正在从百度获取新闻...")
-    try:
-        url = "https://top.baidu.com/board?tab=realtime"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        # 使用正则提取数据
-        pattern = r'"word":"(.*?)"'
-        titles = re.findall(pattern, response.text)
-        
-        news_list = []
-        for title in titles[:30]:
-            if title:
-                news_list.append({"title": title, "summary": "", "url": ""})
-        
-        print(f"  ✅ 百度获取到 {len(news_list)} 条新闻")
-        return news_list
-    except Exception as e:
-        print(f"  ❌ 百度抓取失败: {str(e)}")
-        return []
-
 def filter_by_category(news_list):
     """按行业领域分类新闻"""
     print(f"🔍 正在对 {len(news_list)} 条新闻进行分类...")
     categorized = {category: [] for category in CATEGORIES}
     
+    # 调试：打印所有抓取到的标题，方便你确认是否包含关键词
+    all_titles = [news["title"] for news in news_list]
+    print(f"📄 抓取到的所有标题: {all_titles}")
+    
     for news in news_list:
         title = news["title"] + " " + news["summary"]
+        matched = False
         for category, keywords in CATEGORIES.items():
-            if any(kw in title for kw in keywords):
-                categorized[category].append({
-                    "title": news["title"],
-                    "url": news["url"]
-                })
+            for kw in keywords:
+                if kw in title:
+                    categorized[category].append({
+                        "title": news["title"],
+                        "url": news["url"]
+                    })
+                    matched = True
+                    break
+            if matched:
                 break
     
     # 统计分类结果
@@ -192,14 +169,15 @@ def generate_feishu_message(categorized_news):
     total_news = sum(len(v) for v in categorized_news.values())
     
     if total_news == 0:
-        # 如果没有匹配到新闻，发送所有新闻的摘要
+        # 如果没有匹配到新闻，发送提示消息（包含当前时间地点）
         return {
             "msg_type": "text",
             "content": {
                 "text": f"📰 {today} 行业新闻日报\n\n"
                        f"⚠️ 今日未匹配到相关领域新闻\n"
-                       f"建议：检查关键词配置或新闻源可用性\n"
-                       f"更新时间：{current_time}"
+                       f"📍 当前地点：福建省厦门市\n"
+                       f"🕒 更新时间：{current_time}\n"
+                       f"💡 建议：检查关键词配置或新闻源可用性"
             }
         }
     
@@ -208,7 +186,7 @@ def generate_feishu_message(categorized_news):
             "tag": "div",
             "text": {
                 "tag": "lark_md",
-                "content": f"🚗 **{today} 行业新闻速递**\n*数据来源：36氪+澎湃新闻+百度热搜 | 更新时间 {current_time}*"
+                "content": f"🚗 **{today} 行业新闻速递**\n*数据来源：36氪+澎湃新闻 | 更新时间 {current_time}*"
             }
         }
     ]
@@ -246,33 +224,23 @@ def generate_feishu_message(categorized_news):
 def main():
     print("🚀 开始获取行业新闻...")
     
-    # 从多个源获取新闻
+    # 从36氪和澎湃新闻获取新闻
     news_list = []
     news_list.extend(get_36kr_news())
     news_list.extend(get_the_paper_news())
-    news_list.extend(get_baidu_news())
     
     print(f"📊 总共获取到 {len(news_list)} 条新闻")
     
-    # 如果没有获取到任何新闻，使用模拟数据
+    # 如果没有获取到任何新闻，发送提示消息
     if not news_list:
-        print("⚠️ 所有新闻源均失败，使用模拟数据")
-        news_list = [
-            {"title": "工信部发布智能网联汽车标准体系建设指南", "summary": "", "url": "https://www.36kr.com/p/1"},
-            {"title": "百度Apollo宣布Robotaxi商业化运营", "summary": "", "url": "https://www.36kr.com/p/2"},
-            {"title": "特斯拉FSD V12.4版本推送", "summary": "", "url": "https://www.36kr.com/p/3"},
-            {"title": "小马智行获准在京开展无人化测试", "summary": "", "url": "https://www.36kr.com/p/4"},
-            {"title": "宇通发布全球首款纯电氢能客车", "summary": "", "url": "https://www.36kr.com/p/5"},
-            {"title": "重汽推出L4级无人物流车", "summary": "", "url": "https://www.36kr.com/p/6"},
-            {"title": "华为发布车路协同解决方案", "summary": "", "url": "https://www.36kr.com/p/7"},
-            {"title": "宁德时代发布新一代电池技术", "summary": "", "url": "https://www.36kr.com/p/8"},
-        ]
-    
-    # 分类过滤
-    categorized = filter_by_category(news_list)
-    
-    # 生成飞书消息
-    message = generate_feishu_message(categorized)
+        print("⚠️ 所有新闻源均失败，将发送提示消息")
+        categorized = {category: [] for category in CATEGORIES}
+        message = generate_feishu_message(categorized)
+    else:
+        # 分类过滤
+        categorized = filter_by_category(news_list)
+        # 生成飞书消息
+        message = generate_feishu_message(categorized)
     
     # 获取Webhook
     webhook = os.getenv("FEISHU_WEBHOOK")
